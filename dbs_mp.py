@@ -351,6 +351,9 @@ def run(rank, size, seed=1234):
     if args.model == "resnet":
         import Net.Resnet
         model = Net.Resnet.ResNet101(num_classes)
+    if args.model == "resnet34":
+        import Net.Resnet
+        model = Net.Resnet.ResNet34(num_classes)
     if args.model == "densenet":
         import Net.Densenet
         model = Net.Densenet.DenseNet121(num_classes)
@@ -551,7 +554,11 @@ def main_worker(gpu, ngpus_per_node, args):
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                 world_size=args.world_size, rank=args.rank)
 
-    logger = dbs_logging.init_logger(args, args.rank, base_filename)
+    if args.log_dir is None:
+        args.log_dir = '{}_{}_{}_workers_logs'.format(args.model,
+                args.global_batch_size, args.world_size)
+
+    logger = dbs_logging.init_logger(args, args.rank, base_filename, args.log_dir)
 
     run(args.rank, args.world_size)
 

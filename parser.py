@@ -1,7 +1,7 @@
 import argparse
 
 
-_method_list = ["mnistnet", "resnet", "densenet", "googlenet", "regnet", "transformer"]
+_method_list = ["mnistnet", "resnet", "resnet34", "densenet", "googlenet", "regnet", "transformer"]
 _dataset_list = ["cifar10", "cifar100", "mnist", "wikitext2"]
 
 
@@ -91,4 +91,6 @@ def get_parser():
                         help='url used to set up distributed training')
     parser.add_argument('-dist-backend', default='nccl', type=str,
                         help='distributed backend')
+    parser.add_argument('-log-dir', default=None, type=str,
+                        help='log directory path')
     return parser

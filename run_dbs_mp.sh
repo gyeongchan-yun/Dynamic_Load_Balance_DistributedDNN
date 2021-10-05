@@ -12,7 +12,8 @@ if [ -z $world_size ]; then
   exit 1
 fi
 
-master=shark1
+#master=shark1
+master=tino110
 if [[ $rank == "0" ]] && [[ $world_size == "1" ]]; then
   master=`hostname`
   echo $master
@@ -20,10 +21,11 @@ if [[ $rank == "0" ]] && [[ $world_size == "1" ]]; then
   exit 1;
 fi
 
-model=densenet
+model=resnet34
 batch_size=128 # Global size on a node
 gpu=0,1,2,3
 dataset=cifar10
+epochs=200
 
 echo "model: "$model "| batch size: "$batch_size "| gpu: "$gpu "| dataset: "$dataset
 python dbs_mp.py \
@@ -35,4 +37,5 @@ python dbs_mp.py \
   -m $model \
   -gpu $gpu \
   -ds $dataset \
+  -e $epochs \
   -multiprocessing-distributed
