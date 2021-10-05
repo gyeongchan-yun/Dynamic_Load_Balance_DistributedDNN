@@ -40,8 +40,8 @@ gpu = args.gpu
 training_model = args.model
 ft_enabled = args.fault_tolerance
 ftc = args.fault_tolerance_chance
-ocp_enabled = args.one_cycle_policy
-_disabled_enhancements = args.disable_enhancements
+ocp_enabled = args.one_cycle_policy  # Default: False
+_disabled_enhancements = args.disable_enhancements  # Default: False
 
 """
 ##########################################################################################
@@ -365,7 +365,7 @@ def run(rank, size, seed=1234):
     for name, param in model.named_parameters():
         dist.all_reduce(param.data, op=dist.ReduceOp.SUM)
         param.data /= float(size)
-        
+
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0.9)
 
     if args.model == "transformer":
@@ -516,6 +516,7 @@ def init_processes(rank, size, fn, backend='gloo'):
 
     # Configuring multiple GPU
     if not debug_mode_enabled and isinstance(gpu, list):
+        # gpu is defined as a global variable assigned by args.gpu
         DEVICE = "cuda:{}".format(gpu[rank])
         torch.cuda.set_device(gpu[rank])
 

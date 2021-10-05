@@ -39,7 +39,7 @@ def model_list(v):
 
 def get_parser():
     parser = argparse.ArgumentParser(description="Dynamic Batchsize for Distributed DNN Training")
-    parser.add_argument('-d', '--debug', type=str2bool, default=True, required=False,
+    parser.add_argument('-debug', '--debug', type=str2bool, default=False, required=False,
                         help="Debug mode. Configure to True to run mnist and mnistnet with CPU. Default True.")
     parser.add_argument('-ws', '--world_size', type=int, default=4, required=False,
                         help="Configure the world size of the cluster. Default 4.")

@@ -2,16 +2,9 @@
 
 Official Pytorch implementation of "DLB: A Dynamic Load Balance Strategy For Robust Distributed Deep Neural Network Training".
 
-## Quickstart
-### Cloning
-```
-git clone https://github.com/soptq/Dynamic_Batch-Size_DistributedDNN
-cd Dynamic_Batch-Size_DistributedDNN
-```
-
 ### Installation
 ```
-pip install -r requirements.txt
+docker pull pytorch/pytorch:1.5-cuda10.1-cudnn7-devel
 ```
 
 ### Dataset Preparation
@@ -25,7 +18,7 @@ Here we run DBS with DenseNet-121 in 4 workers' distributed environment where wo
 Additionally, the total batchsize of the entire cluster is set to 512, other arguments remain default.
 
 ```
-python dbs.py -d false -ws 4 -b 512 -m densenet -ds cifar10 -gpu 0,0,0,1
+python dbs.py -ws 4 -b 512 -m densenet -ds cifar10 -gpu 0,0,0,1
 ```
 
 Details of other arguments can be referred in `parser.py`
