@@ -428,7 +428,19 @@ def run(rank, size, seed=1234):
 
         if dbs_enabled:
             # Exchange pure train time for dataset partition ratio calculating in the next epoch.
-            nodes_time = time_allreduce(torch.tensor([train_time], dtype=torch.float32).cpu(), rank, size)
+            time_calc_start = time.time()
+            if args.dist_backend == 'nccl':
+                nodes_time_tensor_list = [
+                        torch.tensor([0], dtype=torch.float32).to(DEVICE) \
+                        for _ in range(size)]
+                train_time_tensor = torch.tensor(
+                        [train_time], dtype=torch.float32).to(DEVICE)
+                dist.all_gather(nodes_time_tensor_list, train_time_tensor)
+                nodes_time = [
+                        tensor.item() for tensor in nodes_time_tensor_list]
+            else:  # 'gloo' and 'mpi' backend support send() and recv().
+                nodes_time = time_allreduce(torch.tensor([train_time], dtype=torch.float32).cpu(), rank, size)
+            print('//////// time calculation overhead:', time.time() - time_calc_start)
             logger.info(f"Rank {rank}, total time {nodes_time}")
 
         # record statistic data
