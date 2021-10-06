@@ -6,8 +6,6 @@ import time
 import numpy as np
 
 import torch
-
-torch.multiprocessing.set_start_method('spawn', force=True)
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.distributed as dist
@@ -21,47 +19,10 @@ import utils
 
 args = parser.get_parser().parse_args()
 
-"""
-##########################################################################################
-#
-#   Get Arguments From Parser.
-#
-##########################################################################################
-"""
-
-debug_mode_enabled = args.debug
-world_size = args.world_size
-batch_size = args.batch_size
-lr = args.learning_rate
-epoch_size = args.epoch_size
-dataset = args.dataset
-dbs_enabled = args.dynamic_batch_size
-gpu = args.gpu
-training_model = args.model
-ft_enabled = args.fault_tolerance
-ftc = args.fault_tolerance_chance
-ocp_enabled = args.one_cycle_policy  # Default: False
-_disabled_enhancements = args.disable_enhancements  # Default: False
-
-"""
-##########################################################################################
-#
-#   Initialize Useful Variables
-#
-##########################################################################################
-"""
-# Saved file name
-base_filename = '%s-%s-debug%d-n%d-bs%d-lr%.4f-ep%d-dbs%d-ft%d-ftc%f-node%s-ocp%d'\
-                            % (args.model, args.dataset, int(args.debug), args.world_size, args.batch_size,
-                               args.learning_rate, args.epoch_size, int(args.dynamic_batch_size),
-                               int(args.fault_tolerance), args.fault_tolerance_chance,
-                               "{}", int(args.one_cycle_policy))
-
-if _disabled_enhancements:
-    base_filename = "puredbs=" + base_filename
-
+#"""
 # Configure Processing Unit
-if debug_mode_enabled:
+gpu = args.gpu
+if args.debug:
     DEVICE = "cpu"
 elif isinstance(gpu, int):
     DEVICE = "cuda:{}".format(gpu)
@@ -69,12 +30,15 @@ elif isinstance(gpu, int):
 else:
     # Will configure it when the worker process is spawned.
     DEVICE = None
+#"""
 
 # Fault-Tolerance-Related Variables
+ft_enabled = args.fault_tolerance
+ftc = args.fault_tolerance_chance
 fault_wait = False  # Flag that indicates if current worker is in a random waiting phase.
 fault_round = 0  # Random integer that indicates when will current worker stop waiting.
 fault_wait_time = 0  # Random integer that indicates how many seconds current worker needs to wait.
-current_epoch = -1  # A variable that stores current epoch number.
+saved_epoch = -1  # A variable that stores current epoch number.
 
 # Log-Related Variables
 logger = None
@@ -190,8 +154,9 @@ def transformer_validate(val_loader, model, criterion, epoch, num_batches, ntoke
 """
 
 
-def adjust_learning_rate(optimizer, epoch):
-    global lr, epoch_size
+def adjust_learning_rate(optimizer, epoch, args):
+    lr = args.lr
+    epoch_size = args.epoch_size
     """
     One Cycle Policy
     0 <= epoch < 0.3 * epoch_size: 0.01 * lr + ((0.99 * lr) / (epoch_size * 0.3)) * epoch
@@ -199,7 +164,7 @@ def adjust_learning_rate(optimizer, epoch):
     0.7 * epoch_size <= epoch < epoch_size: lr - ((0.99 * lr) / (epoch_size * 0.3)) * (epoch - 0.7 * epoch)
     """
 
-    if _disabled_enhancements:
+    if args.disable_enhancements:
         return
 
 
@@ -242,11 +207,16 @@ def train(trainloader, model, optimizer, criterion, epoch, num_batches, partitio
         average_time += wait_time
         if i % 10 == 0 and i > 0:
             logger.info(
-                f'Rank {_rank}, epoch {epoch}: {i}, train_time {train_time}, average_time {average_time}, train_loss {running_loss / 10.0}')
+                f'Rank {_rank}, epoch {epoch}: step {i},\
+                cumul_train_time {train_time},\
+                cumul_average_time {average_time},\
+                avg_train_loss {running_loss / 10.0}')
             running_loss = 0.0
     train_time = time.time() - start_time
     logger.info(
-        f'Rank {_rank}, epoch {epoch}, train_time {train_time}, train_loss {epoch_loss / num_batches}')
+        f'Rank {_rank}, epoch {epoch},\
+        epoch_train_time {train_time},\
+        avg_train_loss {epoch_loss / num_batches}')
     return train_time - average_time, average_time, epoch_loss / num_batches
 
 
@@ -290,7 +260,9 @@ def transformer_train(trainloader, model, optimizer, criterion, epoch, num_batch
 
 def SSGD(model, _rank, _world_size, partition_size: np.ndarray):
     wait_time = 0.0
-    weighted = (partition_size[_rank] / partition_size.sum()) if not _disabled_enhancements else (1 / _world_size)
+    weighted = (partition_size[_rank] / partition_size.sum()) \
+            if not args.disable_enhancements \
+            else (1 / _world_size)
     for param in model.parameters():
         sync_data = weighted * param.grad.data
         req = dist.all_reduce(sync_data, op=dist.ReduceOp.SUM, async_op=True)
@@ -310,11 +282,13 @@ def SSGD(model, _rank, _world_size, partition_size: np.ndarray):
 """
 
 
-def run(rank, size, seed=1234):
-    global lr, debug_mode_enabled, dbs_enabled
+def run(base_filename, args):
+    rank = args.rank
+    size = args.world_size
+    dataset = args.dataset
+    seed = args.seed if args.seed is not None else 1234 # default: None
+    batch_size = args.global_batch_size
     print('run() starts!')
-
-
     if rank == 0:
         data_recorder = {"epoch": [],
                          "train_loss": [],
@@ -329,12 +303,13 @@ def run(rank, size, seed=1234):
 
     print('logger run()', logger)
     logger.info(f'Initiating Rank {rank}, World Size {size}')
+    print('seed:', seed)
     torch.manual_seed(seed)
 
     # Configure training model
 
     num_classes = 10
-    if args.dataset == "cifar100":
+    if dataset == "cifar100":
         num_classes = 100
 
     ntokens = 33278
@@ -372,7 +347,7 @@ def run(rank, size, seed=1234):
         dist.all_reduce(param.data, op=dist.ReduceOp.SUM)
         param.data /= float(size)
 
-    optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0.9)
+    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9)
 
     if args.model == "transformer":
         criterion = F.nll_loss
@@ -388,12 +363,14 @@ def run(rank, size, seed=1234):
     logger.info(f'Rank {rank} start training')
     total_train_time = 0  # Count total train time
 
-    for epoch in range(epoch_size):
-        if ocp_enabled:
-            adjust_learning_rate(optimizer, epoch)
-        if dbs_enabled:
+    for epoch in range(args.epoch_size):
+        if args.ocp_enabled:
+            adjust_learning_rate(optimizer, epoch, args)
+        if args.dbs_enabled:
             # Calculated dataset partition ratio based on workers' training time and last epoch's partition ratio.
-            partition_size = get_size(nodes_time, partition_size)
+            partition_dataset_start = time.time()
+            partition_size = get_size(nodes_time, partition_size, batch_size,  size)
+            print('partition dataset overhead:', time.time() - partition_dataset_start)
             logger.info(f"Rank {rank}, adjusted partition size to {partition_size}")
         # Using calculated partition size to split dataset, getting train_set, val_set, as well as corresponding
         # batch size of current worker
@@ -411,6 +388,7 @@ def run(rank, size, seed=1234):
 
         epoch_start_time = time.time()
         # train() returned train_time excludes the communication time.
+        # Therefore, train_time is considered as computation time including data loading to GPU.
         if args.model == "transformer":
             train_time, sync_time, train_loss = transformer_train(train_set, model, optimizer, criterion, epoch,
                                                       num_batches, partition_size, ntokens, bptt)
@@ -426,7 +404,7 @@ def run(rank, size, seed=1234):
         else:
             val_loss, accuracy = validate(val_set, model, criterion, epoch, num_batches)
 
-        if dbs_enabled:
+        if args.dbs_enabled:
             # Exchange pure train time for dataset partition ratio calculating in the next epoch.
             time_calc_start = time.time()
             if args.dist_backend == 'nccl':
@@ -440,8 +418,8 @@ def run(rank, size, seed=1234):
                         tensor.item() for tensor in nodes_time_tensor_list]
             else:  # 'gloo' and 'mpi' backend support send() and recv().
                 nodes_time = time_allreduce(torch.tensor([train_time], dtype=torch.float32).cpu(), rank, size)
-            print('//////// time calculation overhead:', time.time() - time_calc_start)
-            logger.info(f"Rank {rank}, total time {nodes_time}")
+            print('time calculation overhead:', time.time() - time_calc_start)
+            logger.info(f"Rank {rank}, all worker's computation time {nodes_time}")
 
         # record statistic data
         if rank == 0:
@@ -455,13 +433,8 @@ def run(rank, size, seed=1234):
             data_recorder["node_time"].append(nodes_time)
             data_recorder["wallclock_time"].append(total_train_time)
 
-    if rank == 0:
-        npy_filename = base_filename.format(str(rank)) + ".npy"
-        np.save(os.path.join("./statis", npy_filename), data_recorder)
-
     logger.info(f'Rank {rank} Terminated')
-    logger.info(f'Rank {rank} Total Time:')
-    logger.info(total_train_time)
+    logger.info(f'Rank {rank} Total Time: {total_train_time}')
 
 
 """
@@ -473,7 +446,8 @@ def run(rank, size, seed=1234):
 """
 
 
-def get_size(nodes_time: np.ndarray, partition_size: np.ndarray):
+def get_size(nodes_time: np.ndarray, partition_size: np.ndarray,
+             batch_size, world_size):
     _sum = 0.0
     for i in range(world_size):
         _sum += (partition_size[i] / nodes_time[i])
@@ -517,44 +491,20 @@ def time_allreduce(send_buff, rank, size):
     return result
 
 
-"""
-##########################################################################################
-#
-#   Distributed Simulating Code
-#
-##########################################################################################
-"""
-
-
-def init_processes(rank, size, fn, backend='gloo'):
-    global DEVICE, logger
-    os.environ['MASTER_ADDR'] = '127.0.0.1'
-    os.environ['MASTER_PORT'] = '29500'
-    dist.init_process_group(backend, rank=rank, world_size=size)
-
-    # Configuring multiple GPU
-    if not debug_mode_enabled and isinstance(gpu, list):
-        # gpu is defined as a global variable assigned by args.gpu
-        DEVICE = "cuda:{}".format(gpu[rank])
-        torch.cuda.set_device(gpu[rank])
-
-    logger = dbs_logging.init_logger(args, rank, base_filename)
-
-    fn(rank, size)
-
-
 def main_worker(gpu, ngpus_per_node, args):
     global DEVICE, logger
     print('Global Batch Size:', args.global_batch_size)
     args.gpu = gpu
     print('args.gpu in main_worker()', args.gpu)
 
-    if not debug_mode_enabled:
+    if not args.debug:
         DEVICE = "cuda:{}".format(args.gpu)
         torch.cuda.set_device(DEVICE)
 
     if args.gpu is not None:
         print("Use GPU: {} for training".format(args.gpu))
+        args.batch_size = int(args.batch_size / ngpus_per_node)
+        print('Local Batch Size:', args.batch_size)
 
     if args.distributed:
         if args.dist_url == "env://" and args.rank == -1:
@@ -567,26 +517,25 @@ def main_worker(gpu, ngpus_per_node, args):
                                 world_size=args.world_size, rank=args.rank)
 
     if args.log_dir is None:
-        args.log_dir = '{}_{}_{}_workers_logs'.format(args.model,
-                args.global_batch_size, args.world_size)
+        args.log_dir = '{}_{}_{}_{}_workers_logs'.format(args.model,
+                args.global_batch_size, args.batch_size, args.world_size)
+
+    # Log file name
+    base_filename = '%s-%s-debug%d-n%d-gbs%d-lbs%d-lr%.4f-ep%d-dbs%d-ft%d-ftc%f-node%s-ocp%d'\
+            % (args.model, args.dataset, int(args.debug), args.world_size,
+               args.global_batch_size, args.batch_size, args.lr, args.epoch_size,
+               int(args.dbs_enabled), int(args.fault_tolerance),
+               args.fault_tolerance_chance, "{}", int(args.ocp_enabled))
+
+    if args.disable_enhancements:
+        base_filename = "puredbs=" + base_filename
 
     logger = dbs_logging.init_logger(args, args.rank, base_filename, args.log_dir)
 
-    run(args.rank, args.world_size)
+    run(base_filename, args)
 
 
 if __name__ == "__main__":
-    if args.seed is not None:
-        random.seed(args.seed)
-        torch.manual_seed(args.seed)
-        cudnn.deterministic = True
-        warnings.warn('You have chosen to seed training. '
-                      'This will turn on the CUDNN deterministic setting, '
-                      'which can slow down your training considerably! '
-                      'You may see unexpected behavior when restarting '
-                      'from checkpoints.')
-
-
     args.distributed = args.world_size > 1 or args.multiprocessing_distributed
 
     ngpus_per_node = torch.cuda.device_count()

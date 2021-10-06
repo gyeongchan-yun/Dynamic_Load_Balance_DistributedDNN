@@ -43,18 +43,17 @@ def get_parser():
                         help="Debug mode. Configure to True to run mnist and mnistnet with CPU. Default True.")
     parser.add_argument('-ws', '--world_size', type=int, default=4, required=False,
                         help="Configure the world size of the cluster. Default 4.")
-    parser.add_argument('-b', '--batch_size', type=int, default=64, required=False,
-                        help="Configure the batch size of the cluster. For example, a 512 batch size and 4 workers "
-                             "will result in each work owns a batch size of 128. Default 64, recommended larger than "
-                             "512.")
+    parser.add_argument('-b', '--batch_size', type=int, default=128, required=False,
+                        help='mini-batch size (default: 128), this is the total '
+                             'batch size of all GPUs on the current node.')
     parser.add_argument('-lr', '--learning_rate', type=float, default=0.01, required=False,
-                        help="Configure the learning rate. Default 0.01.")
+                        help="Configure the learning rate. Default 0.01.", dest='lr')
     parser.add_argument('-e', '--epoch_size', type=int, default=10, required=False,
                         help="Configure the epoch size of the training. Default 10.")
     parser.add_argument('-ds', '--dataset', type=dataset_list, default='wikitext2', required=False,
                         help="Configure target dataset, options are mnist, cifar10 and cifar100")
     parser.add_argument('-dbs', '--dynamic_batch_size', type=str2bool, default=True, required=False,
-                        help="Dynamic Batch Size. Configure to True to enable. Default True.")
+                        help="Dynamic Batch Size. Configure to True to enable. Default True.", dest='dbs_enabled')
     parser.add_argument('-gpu', '--gpu', type=gpu_list, default=0, required=False,
                         help="Configure which gpu card to use, will not take effects in debug mode. "
                              "If you have multiple GPU cards, split it with comma. E.g. '0,0,0,1' with 4 workers will "
@@ -73,7 +72,7 @@ def get_parser():
     parser.add_argument('-ocp', '--one_cycle_policy', type=str2bool, default=False, required=False,
                         help="Enable One Cycle Policy, which makes learning rate starts at 1/100 learning rate,"
                              "gradually increases to learning rate, and finally decreases to 1/100 learning rate at the"
-                             "end.")
+                             "end.", dest='ocp_enabled')
     parser.add_argument('-de', '--disable_enhancements', type=str2bool, default=False, required=False,
                         help="Temporary disable one cycle policy and dynamic weights. Only for testing. Do not enable"
                              "it unless you know what you are doing.")

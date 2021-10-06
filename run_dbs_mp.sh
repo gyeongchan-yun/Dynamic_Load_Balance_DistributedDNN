@@ -22,20 +22,25 @@ if [[ $rank == "0" ]] && [[ $world_size == "1" ]]; then
 fi
 
 model=resnet34
-batch_size=128 # Global size on a node
+batch_size=256 # Global size on a node
+lr=0.01
 gpu=0,1,2,3
 dataset=cifar10
-epochs=200
+epochs=3
+backend=nccl
+log_dir=resnet34_1024_16_workers_nccl_logs/
 
 echo "model: "$model "| batch size: "$batch_size "| gpu: "$gpu "| dataset: "$dataset
 python dbs_mp.py \
   -dist-url 'tcp://'${master}':22000' \
-  -dist-backend 'gloo' \
+  -dist-backend $backend \
   -ws $world_size \
   -rank $rank \
   -b $batch_size \
+  -lr $lr \
   -m $model \
   -gpu $gpu \
   -ds $dataset \
   -e $epochs \
-  -multiprocessing-distributed
+  -multiprocessing-distributed \
+  -log-dir $log_dir

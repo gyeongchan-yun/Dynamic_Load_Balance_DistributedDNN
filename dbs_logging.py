@@ -4,13 +4,12 @@ import logging, socket, os
 
 def init_logger(args, rank, basefile_name, output_dir="./logs"):
 
-    if not os.path.exists(output_dir):
-        os.mkdir(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
 
     extra = {
         "world_size": args.world_size,
-        "lr": args.learning_rate,
-        "dbs": "enabled" if args.dynamic_batch_size else "disabled",
+        "lr": args.lr,
+        "dbs": "enabled" if args.dbs_enabled else "disabled",
         "ft": "enabled" if args.fault_tolerance else "disabled"
     }
 
