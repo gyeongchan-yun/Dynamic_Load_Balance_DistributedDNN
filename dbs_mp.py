@@ -207,16 +207,16 @@ def train(trainloader, model, optimizer, criterion, epoch, num_batches, partitio
         average_time += wait_time
         if i % 10 == 0 and i > 0:
             logger.info(
-                f'Rank {_rank}, epoch {epoch}: step {i},\
-                cumul_train_time {train_time},\
-                cumul_average_time {average_time},\
-                avg_train_loss {running_loss / 10.0}')
+                f'Rank {_rank}, epoch {epoch}: step {i}, '
+                f'cumul_train_time {train_time}, '
+                f'cumul_average_time {average_time}, '
+                f'avg_train_loss {running_loss / 10.0}')
             running_loss = 0.0
     train_time = time.time() - start_time
     logger.info(
-        f'Rank {_rank}, epoch {epoch},\
-        epoch_train_time {train_time},\
-        avg_train_loss {epoch_loss / num_batches}')
+        f'Rank {_rank}, epoch {epoch}, '
+        f'epoch_train_time {train_time}, '
+        f'avg_train_loss {epoch_loss / num_batches}')
     return train_time - average_time, average_time, epoch_loss / num_batches
 
 
